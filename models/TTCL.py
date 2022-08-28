@@ -90,8 +90,8 @@ class TTCL(nn.Module):
                        (self.rank[i] * self.inp_modes[i], self.rank[i + 1] * self.out_modes[i]))))
                 x = torch.mm(reshaped_core.T, x)
                 # x = torch.einsum('kc...bhw,kcoj->j...obhw', x, self.cores[i])
-            x = torch.reshape(x, (self.out_modes[i], self.rank[i + 1], -1, int(torch.prod(torch.tensor(self.out_modes[:i])).item()), batch_size, new_h, new_w))
-            x = torch.permute(x, (1, 2, 3, 0, 4, 5, 6))
-        x = torch.reshape(x, (int(torch.prod(torch.tensor(self.out_modes)).item()), batch_size, new_h, new_w))
-        x = torch.permute(x, (1, 0, 2, 3))
+            x = torch.reshape(x, (self.rank[i + 1], self.out_modes[i], -1))
+            x = torch.permute(x, (0, 2, 1))
+        x = torch.reshape(x, (batch_size, new_h, new_w, int(torch.prod(torch.tensor(self.out_modes)).item())))
+        x = torch.permute(x, (0, 3, 1, 2))
         return x
