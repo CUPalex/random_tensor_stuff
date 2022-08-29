@@ -52,7 +52,7 @@ class TTCL(nn.Module):
 
         self.rank = rank
         self.conv = nn.Conv2d(1, self.rank[0], self.kernel_size, stride=self.stride, padding=self.padding)
-        self.cores = torch.nn.ParameterList([torch.nn.Parameter(nn.init.xavier_normal_(torch.empty((self.rank[i], self.inp_modes[i], self.out_modes[i], self.rank[i + 1])))).to(self.device)
+        self.cores = torch.nn.ParameterList([torch.nn.Parameter(nn.init.xavier_normal_(torch.empty((self.rank[i] * self.inp_modes[i], self.out_modes[i] * self.rank[i + 1])))).to(self.device)
                                              for i in range(len(self.inp_modes))])
 
         # self.rank = factors.rank[2:]
@@ -79,17 +79,19 @@ class TTCL(nn.Module):
         # x_shape = [rank[0], c_1, .. ,c_d, batch_size, new_h, new_w]
 
         for i in range(d):
-            x = torch.reshape(x, (self.rank[i] * self.inp_modes[i], -1))
             if self.training:
+                x = torch.reshape(x, (self.rank[i], self.inp_modes[i], -1))
                 gamma = torch.Tensor(np.random.binomial(1, self.p, size=self.rank[i])).to(self.device)
-                droppedout_core = (torch.nn.Parameter(torch.reshape(torch.einsum('i,ijkl->ijkl', gamma, self.cores[i]),
-                       (self.rank[i] * self.inp_modes[i], self.rank[i + 1] * self.out_modes[i]))))
-                x = torch.mm(droppedout_core.T, x)
-            else:
-                reshaped_core = (torch.nn.Parameter(torch.reshape(self.cores[i],
-                       (self.rank[i] * self.inp_modes[i], self.rank[i + 1] * self.out_modes[i]))))
-                x = torch.mm(reshaped_core.T, x)
-                # x = torch.einsum('kc...bhw,kcoj->j...obhw', x, self.cores[i])
+                x = torch.transpose(x, 0, 2)
+                x = torch.mul(x, gamma)
+                x = torch.transpose(x, 0, 2)
+                # droppedout_core = (torch.nn.Parameter(torch.reshape(torch.einsum('i,ijkl->ijkl', gamma, self.cores[i]),
+                #       (self.rank[i] * self.inp_modes[i], self.rank[i + 1] * self.out_modes[i]))))
+                # x = torch.mm(droppedout_core.T, x)
+            x = torch.reshape(x, (self.rank[i] * self.inp_modes[i], -1))
+            x = torch.mm(self.cores[i].T, x)
+            # x = torch.einsum('kc...bhw,kcoj->j...obhw', x, self.cores[i])
+
             x = torch.reshape(x, (self.rank[i + 1], self.out_modes[i], -1))
             x = torch.permute(x, (0, 2, 1))
         x = torch.reshape(x, (batch_size, new_h, new_w, int(torch.prod(torch.tensor(self.out_modes)).item())))
